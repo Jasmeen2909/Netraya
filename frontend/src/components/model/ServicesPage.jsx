@@ -11,6 +11,9 @@ import { useState } from 'react';
 const ServicesPage = () => {
   const [uploadedImage, setUploadedImage] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
 
   const handleImageUpload = (event) => {
     const file = event.target.files[0];
@@ -19,8 +22,44 @@ const ServicesPage = () => {
       reader.onload = () => {
         setUploadedImage(reader.result);
         setShowPreview(true);
+        setResults(null);
+        setError(null);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const runModel = async () => {
+    if (!uploadedImage) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      // Convert base64 to blob
+      const base64Response = await fetch(uploadedImage);
+      const blob = await base64Response.blob();
+      formData.append('image', blob, 'image.jpg');
+
+      const response = await fetch('http://localhost:5000/api/users/predict', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to process image');
+      }
+
+      const data = await response.json();
+      setResults(data);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -52,19 +91,42 @@ const ServicesPage = () => {
         </div>
 
         {showPreview && (
-  <div className="preview-section">
-    <h2>Preview of the Uploaded Image:</h2>
-    {uploadedImage ? (
-      <img src={uploadedImage} alt="Uploaded Preview" className="uploaded-image" />
-    ) : (
-      <p>No image uploaded yet.</p>
-    )}
-    <button className="run-model-button" onClick={() => alert('Model will be executed here.')}>
-      Run Model
-    </button>
-  </div>
-)}
+          <div className="preview-section">
+            <h2>Preview of the Uploaded Image:</h2>
+            {uploadedImage && (
+              <>
+                <img src={uploadedImage} alt="Uploaded Preview" className="uploaded-image" />
+                <button 
+                  className="run-model-button" 
+                  onClick={runModel}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Processing...' : 'Run Model'}
+                </button>
 
+                {error && (
+                  <div className="error-message">
+                    Error: {error}
+                  </div>
+                )}
+
+                {results && (
+                  <div className="results-section">
+                    <h3>Results:</h3>
+                    <div className="classification-results">
+                      <h4>Classification:</h4>
+                      <pre>{JSON.stringify(results.classification, null, 2)}</pre>
+                    </div>
+                    <div className="segmentation-results">
+                      <h4>Segmentation:</h4>
+                      <pre>{JSON.stringify(results.segmentation, null, 2)}</pre>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
       <div className="image-section">
         <img src={eyeImage} alt="Eye" className="main-image" />
